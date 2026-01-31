@@ -7,34 +7,27 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
 
     <style>
         :root { 
             --gold: #D4AF37; 
-            --gold-gradient: linear-gradient(135deg, #FFD700 0%, #D4AF37 50%, #AA8A28 100%);
             --gold-liquid: linear-gradient(90deg, #aa8a28 0%, #ffd700 25%, #d4af37 50%, #ffd700 75%, #aa8a28 100%);
             --bg-deep: #010103; 
-            --panel-bg: rgba(12, 12, 14, 0.6);
         }
 
-        /* --- CORE VISUALS --- */
-        * { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; box-sizing: border-box; }
+        /* OTIMIZAÇÃO: Remove scroll nativo suave para assumirmos o controle via JS (Lerp) */
+        html { scroll-behavior: auto !important; }
+
+        * { -webkit-font-smoothing: antialiased; box-sizing: border-box; }
         
         body { 
             background-color: var(--bg-deep); 
             color: #e4e4e7; 
             font-family: 'Plus Jakarta Sans', sans-serif;
             overflow-x: hidden;
-            position: relative;
-        }
-
-        /* TEXTURA DE FILME (CINEMATIC GRAIN) - Elimina banding e adiciona realismo */
-        body::before {
-            content: "";
-            position: fixed; inset: 0; z-index: -1;
-            opacity: 0.03; pointer-events: none;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            margin: 0;
         }
 
         .custom-scroll::-webkit-scrollbar { width: 6px; }
@@ -42,147 +35,157 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; border: 1px solid #000; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: var(--gold); }
 
-        /* --- BACKGROUND FX --- */
-        .deep-space-bg { position: fixed; inset: 0; z-index: -3; background: radial-gradient(circle at 50% 0%, #0f0f13 0%, #000000 80%); }
-        .nebula-layer {
-            position: fixed; inset: 0; z-index: -2;
-            background-image: 
-                radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.04) 0%, transparent 60%),
-                radial-gradient(circle at 80% 80%, rgba(50, 20, 90, 0.06) 0%, transparent 60%);
-            filter: blur(80px); mix-blend-mode: screen;
-            animation: nebulaPulse 10s infinite alternate;
+        /* --- BACKGROUND SHADER --- */
+        #hyper-lattice-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            mask-image: radial-gradient(circle, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.2) 100%);
+            opacity: 0.5;
+            will-change: transform; 
         }
-        @keyframes nebulaPulse { 0% { opacity: 0.5; transform: scale(1); } 100% { opacity: 0.8; transform: scale(1.05); } }
-        
-        #particles { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
 
         /* --- TYPOGRAPHY --- */
         .font-display { font-family: 'Outfit', sans-serif; }
         .font-signature { font-family: 'Playfair Display', serif; font-style: italic; }
         
-        /* Ouro Líquido Animado */
         .text-metallic {
             background: var(--gold-liquid);
             background-size: 200% auto;
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             text-shadow: 0px 0px 40px rgba(212, 175, 55, 0.2);
-            animation: shine 4s linear infinite;
+            animation: shine 6s linear infinite;
         }
         @keyframes shine { to { background-position: 200% center; } }
 
-        /* --- COMPONENTS --- */
-        .glass-card { 
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(20px); 
+        /* --- PRISMATIC CARDS --- */
+        .prism-card-wrapper {
+            position: absolute;
+            top: 50%; left: 50%;
+            /* Inicialmente escondido via transform para evitar flash antes do JS carregar */
+            transform: translate(-50%, -50%) translateZ(-5000px);
+            width: 320px; height: 480px;
+            perspective: 1000px;
+            transform-style: preserve-3d;
+            will-change: transform, opacity;
+        }
+
+        .prism-card {
+            position: relative; width: 100%; height: 100%;
             border-radius: 24px;
-            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-            position: relative; overflow: hidden;
+            background: rgba(15, 15, 20, 0.7);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-top: 1px solid rgba(255,255,255,0.15);
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.9);
+            transition: border-color 0.3s;
         }
         
-        /* Brilho interno no hover */
-        .glass-card::after {
-            content: ''; position: absolute; inset: 0; 
-            background: radial-gradient(800px circle at var(--mouse-x) var(--mouse-y), rgba(255,255,255,0.06), transparent 40%);
-            opacity: 0; transition: opacity 0.5s; pointer-events: none;
-        }
-        .glass-card:hover::after { opacity: 1; }
+        .prism-card:hover { border-color: rgba(212, 175, 55, 0.3); }
 
-        .glass-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(212, 175, 55, 0.3);
-            box-shadow: 0 20px 50px -10px rgba(0,0,0,0.8), 0 0 30px rgba(212, 175, 55, 0.05);
+        .dispersion-layer {
+            position: absolute; inset: 0;
+            background: radial-gradient(circle at top right, rgba(255,255,255,0.05), transparent 60%);
+            mix-blend-mode: overlay; pointer-events: none;
         }
 
-        /* Botões Gateway Holográficos */
+        .card-content {
+            position: absolute; inset: 0; z-index: 20;
+            padding: 32px;
+            display: flex; flex-direction: column; justify-content: flex-end;
+            pointer-events: none;
+        }
+
+        .card-icon-box {
+            width: 50px; height: 50px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            display: flex; items-center; justify-center;
+            margin-bottom: auto;
+        }
+
+        .persuasive-copy {
+            opacity: 0; transform: translateY(20px);
+            transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .prism-card-wrapper.docked .persuasive-copy {
+            opacity: 1; transform: translateY(0);
+        }
+
+        /* --- TUNNEL SECTION --- */
+        #tunnel-section {
+            height: 400vh;
+            position: relative;
+            z-index: 10;
+        }
+
+        #tunnel-sticky-wrapper {
+            position: sticky; top: 0;
+            height: 100vh; width: 100%;
+            overflow: hidden;
+            perspective: 1200px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #tunnel-world {
+            position: relative; width: 100%; height: 100%;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+
+        /* --- UI COMPONENTS --- */
         .btn-gateway {
             position: relative;
             background: linear-gradient(180deg, rgba(30,30,30,0.4) 0%, rgba(10,10,10,0.6) 100%);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-top: 1px solid rgba(255, 255, 255, 0.15); /* Top highlight */
-            color: white;
-            font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
-            padding: 32px; border-radius: 20px;
-            overflow: hidden; transition: all 0.4s ease;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            color: white; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+            padding: 32px; border-radius: 20px; overflow: hidden; transition: all 0.4s ease;
             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-            text-decoration: none;
-            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+            text-decoration: none; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
         }
-        
-        /* Efeito de Scanner ao passar o mouse */
-        .btn-gateway::before {
-            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
-            transition: 0.5s; transform: skewX(-20deg);
-        }
-
         .btn-gateway:hover {
-            border-color: var(--gold);
-            background: linear-gradient(180deg, rgba(40,40,40,0.5) 0%, rgba(20,20,20,0.8) 100%);
-            transform: scale(1.02);
-            box-shadow: 0 20px 60px -10px rgba(0,0,0,0.8), 0 0 25px rgba(212, 175, 55, 0.15);
+            border-color: var(--gold); background: linear-gradient(180deg, rgba(40,40,40,0.5) 0%, rgba(20,20,20,0.8) 100%);
+            transform: scale(1.02); box-shadow: 0 0 25px rgba(212, 175, 55, 0.15);
         }
-        .btn-gateway:hover::before { left: 100%; }
-        
-        .btn-gateway i { transition: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); color: #666; }
-        .btn-gateway:hover i { color: var(--gold); transform: scale(1.2) translateY(-5px); filter: drop-shadow(0 0 15px var(--gold)); }
+        .btn-gateway i { transition: 0.4s; color: #666; }
+        .btn-gateway:hover i { color: var(--gold); transform: scale(1.2); filter: drop-shadow(0 0 15px var(--gold)); }
 
-        /* Scroll Reveal Animation */
-        .reveal { opacity: 0; transform: translateY(40px); transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
-        .reveal.active { opacity: 1; transform: translateY(0); }
-
-        /* Tags de Plataforma */
         .platform-tag {
             font-size: 9px; font-weight: 900; padding: 6px 12px; border-radius: 100px;
             text-transform: uppercase; letter-spacing: 1.5px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.5); backdrop-filter: blur(4px);
         }
         .tag-desktop { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
         .tag-mobile { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2); }
 
-        /* Badge Ecossistema */
-        .eco-badge {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 8px 16px; 
-            border: 1px solid rgba(212, 175, 55, 0.2); 
-            border-radius: 100px; 
-            background: linear-gradient(90deg, rgba(212,175,55,0.05) 0%, transparent 100%);
-            margin-bottom: 2rem;
-            backdrop-filter: blur(10px);
-        }
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
 
     </style>
 </head>
 <body class="custom-scroll">
 
-    <!-- AMBIENT LAYERS -->
-    <div class="deep-space-bg"></div>
-    <div class="nebula-layer"></div>
-    <canvas id="particles"></canvas>
+    <!-- BACKGROUND ENGINE -->
+    <div id="hyper-lattice-bg"></div>
 
-    <!-- MAIN CONTAINER -->
-    <div class="relative z-10 max-w-7xl mx-auto px-6 py-12 flex flex-col min-h-screen">
+    <div class="relative z-10">
         
-        <!-- HEADER / SIGNATURE -->
-        <header class="flex flex-col md:flex-row justify-between items-center mb-24 reveal">
+        <!-- HEADER -->
+        <header class="max-w-7xl mx-auto px-6 pt-12 flex flex-col md:flex-row justify-between items-center mb-24 reveal">
             <div class="flex items-center gap-3 mb-6 md:mb-0">
-                <div class="relative">
-                    <div class="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_15px_#22c55e] relative z-10"></div>
-                    <div class="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
-                </div>
-                <span class="text-[10px] uppercase tracking-[0.3em] text-gray-500 font-bold border-l border-white/10 pl-3 ml-1">System Online v11.2</span>
+                <div class="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_15px_#22c55e]"></div>
+                <span class="text-[10px] uppercase tracking-[0.3em] text-gray-500 font-bold border-l border-white/10 pl-3 ml-1">Fluidity v13.2</span>
             </div>
-            
             <div class="text-center md:text-right group cursor-default">
-                <p class="text-[8px] text-gray-600 uppercase tracking-[0.4em] mb-1 group-hover:text-gold transition-colors duration-500">Architecture & Design by</p>
+                <p class="text-[8px] text-gray-600 uppercase tracking-[0.4em] mb-1 group-hover:text-gold transition-colors duration-500">Desenvolvido e pensado por</p>
                 <h3 class="font-signature text-2xl text-gray-300 group-hover:text-metallic transition-all duration-700">Samuel Vitor</h3>
             </div>
         </header>
 
         <!-- HERO SECTION (GATEWAY) -->
-        <section class="text-center mb-40 reveal">
-            
-            <div class="eco-badge">
+        <section class="max-w-7xl mx-auto px-6 text-center mb-40 reveal">
+            <div class="inline-flex items-center gap-2 px-4 py-1 border border-yellow-500/20 rounded-full bg-yellow-500/5 mb-8 backdrop-blur-md">
                 <i data-lucide="crown" class="w-3 h-3 text-gold"></i>
                 <span class="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">O Ecossistema Definitivo</span>
             </div>
@@ -192,224 +195,264 @@
             </h1>
             
             <p class="font-display text-gray-400 max-w-2xl mx-auto text-base md:text-lg font-light leading-relaxed mb-20 tracking-wide">
-                Domine a prospecção de ponta a ponta. Extração de dados, inteligência de mercado e disparos em massa <span class="text-white font-medium">sincronizados em tempo real</span> através da nuvem.
+                Extração de dados, inteligência e disparos em massa. <br>
+                <span class="text-white font-medium">Desktop & Mobile</span> sincronizados na nuvem.
             </p>
 
-            <!-- THE CHOICE (DESKTOP OR MOBILE) -->
+            <!-- GATEWAY BUTTONS (UPDATED LINKS) -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
                 
-                <!-- PC CARD LINK -->
+                <!-- PC LINK -->
                 <a href="https://leadshunter.github.io/acessorestritoPC/" class="btn-gateway group">
                     <div class="absolute top-5 right-5"><span class="platform-tag tag-desktop">Command Center</span></div>
-                    <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-2 group-hover:bg-white/10 transition">
-                        <i data-lucide="monitor" class="w-8 h-8"></i>
-                    </div>
+                    <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-2 group-hover:bg-white/10 transition"><i data-lucide="monitor" class="w-8 h-8"></i></div>
                     <div class="text-3xl font-black text-white tracking-tight">Desktop</div>
-                    <p class="text-[11px] text-gray-500 font-normal normal-case max-w-[240px] leading-relaxed group-hover:text-gray-300 transition">
-                        Gestão massiva, configuração de API e análise profunda em tela ampla. O poder total da engine.
-                    </p>
+                    <p class="text-[11px] text-gray-500 font-normal normal-case max-w-[240px] leading-relaxed group-hover:text-gray-300 transition">Gestão massiva e configuração de API.</p>
                     <div class="mt-4 px-8 py-2.5 border border-white/10 rounded-full text-[10px] text-gray-400 uppercase tracking-widest group-hover:bg-white group-hover:text-black transition-all font-bold">Acessar Painel</div>
                 </a>
 
-                <!-- MOBILE CARD LINK -->
+                <!-- MOBILE LINK -->
                 <a href="https://leadshunter.github.io/acessorestrito/" class="btn-gateway group">
                     <div class="absolute top-5 right-5"><span class="platform-tag tag-mobile">Tactical App</span></div>
-                    <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-2 group-hover:bg-white/10 transition">
-                        <i data-lucide="smartphone" class="w-8 h-8"></i>
-                    </div>
+                    <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-2 group-hover:bg-white/10 transition"><i data-lucide="smartphone" class="w-8 h-8"></i></div>
                     <div class="text-3xl font-black text-white tracking-tight">Mobile</div>
-                    <p class="text-[11px] text-gray-500 font-normal normal-case max-w-[240px] leading-relaxed group-hover:text-gray-300 transition">
-                        Liberdade total. Monitore disparos e extraia leads direto do seu bolso. Sincronização automática.
-                    </p>
+                    <p class="text-[11px] text-gray-500 font-normal normal-case max-w-[240px] leading-relaxed group-hover:text-gray-300 transition">Monitore e extraia do seu bolso.</p>
                     <div class="mt-4 px-8 py-2.5 border border-white/10 rounded-full text-[10px] text-gray-400 uppercase tracking-widest group-hover:bg-white group-hover:text-black transition-all font-bold">Abrir App</div>
                 </a>
 
             </div>
         </section>
 
-        <!-- FEATURES SECTION -->
-        <section class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-40 max-w-6xl mx-auto">
-            
-            <!-- HUNTER -->
-            <div class="glass-card p-10 reveal delay-100 border-t-2 border-t-yellow-500/50">
-                <div class="w-14 h-14 bg-yellow-500/10 rounded-2xl flex items-center justify-center mb-8 border border-yellow-500/20">
-                    <i data-lucide="globe" class="text-yellow-500 w-7 h-7"></i>
-                </div>
-                <h3 class="text-2xl font-black text-white uppercase mb-4 tracking-wide">Hunter Search</h3>
-                <p class="text-sm text-gray-400 leading-loose mb-8 font-light">
-                    Motor de busca global. Encontre grupos de WhatsApp segmentados por nicho em segundos usando algoritmos de varredura.
-                </p>
-                <div class="text-[9px] font-mono text-yellow-500 uppercase tracking-[0.2em] border-t border-white/5 pt-5 flex items-center gap-2">
-                    <i data-lucide="database" class="w-3 h-3"></i> Database Global
-                </div>
-            </div>
-
-            <!-- EXTRATOR -->
-            <div class="glass-card p-10 reveal delay-200 border-t-2 border-t-purple-500/50">
-                <div class="w-14 h-14 bg-purple-500/10 rounded-2xl flex items-center justify-center mb-8 border border-purple-500/20">
-                    <i data-lucide="scan-line" class="text-purple-500 w-7 h-7"></i>
-                </div>
-                <h3 class="text-2xl font-black text-white uppercase mb-4 tracking-wide">Extrator Pro</h3>
-                <p class="text-sm text-gray-400 leading-loose mb-8 font-light">
-                    Mineração de dados de alta precisão. Extraia contatos válidos de grupos e organize funis de remarketing instantaneamente.
-                </p>
-                <div class="text-[9px] font-mono text-purple-500 uppercase tracking-[0.2em] border-t border-white/5 pt-5 flex items-center gap-2">
-                    <i data-lucide="check-circle" class="w-3 h-3"></i> Validação Numérica
-                </div>
-            </div>
-
-            <!-- DISPARADOR -->
-            <div class="glass-card p-10 reveal delay-300 border-t-2 border-t-green-500/50">
-                <div class="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center mb-8 border border-green-500/20">
-                    <i data-lucide="send" class="text-green-500 w-7 h-7"></i>
-                </div>
-                <h3 class="text-2xl font-black text-white uppercase mb-4 tracking-wide">Disparador</h3>
-                <p class="text-sm text-gray-400 leading-loose mb-8 font-light">
-                    Envie milhares de mensagens com sistema inteligente de rotação de delay e proteção antiban. Alta conversão garantida.
-                </p>
-                <div class="text-[9px] font-mono text-green-500 uppercase tracking-[0.2em] border-t border-white/5 pt-5 flex items-center gap-2">
-                    <i data-lucide="shield" class="w-3 h-3"></i> Motor Anti-Block
-                </div>
-            </div>
-
-        </section>
-
-        <!-- MOBILE BENEFIT HIGHLIGHT -->
-        <section class="glass-card p-14 relative overflow-hidden reveal mb-24 max-w-6xl mx-auto border border-white/5">
-            <div class="absolute -top-20 -right-20 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
-            
-            <div class="relative z-10 flex flex-col md:flex-row items-center gap-16">
-                <div class="flex-1">
-                    <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-6">
-                        <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></span> Tecnologia Cloud Sync
-                    </div>
-                    <h2 class="text-5xl md:text-6xl font-black text-white mb-8 leading-[0.9]">Sua Operação <br><span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Não Para.</span></h2>
-                    <p class="text-gray-400 leading-relaxed text-sm md:text-base mb-10 font-light border-l-2 border-blue-500/30 pl-6">
-                        Diferente de softwares desktop ultrapassados que prendem você ao escritório, o Leads Hunter opera na nuvem.
-                        Comece uma extração no PC do escritório e acompanhe o resultado no seu celular enquanto toma café. 
-                        <strong class="text-white font-bold">Liberdade geográfica total.</strong>
-                    </p>
-                    <div class="flex flex-wrap gap-4">
-                        <div class="flex items-center gap-2 text-xs font-bold text-gray-300 bg-white/5 px-5 py-2.5 rounded-full border border-white/5">
-                            <i data-lucide="cloud" class="w-3 h-3 text-blue-500"></i> Sem Instalação
-                        </div>
-                        <div class="flex items-center gap-2 text-xs font-bold text-gray-300 bg-white/5 px-5 py-2.5 rounded-full border border-white/5">
-                            <i data-lucide="refresh-cw" class="w-3 h-3 text-blue-500"></i> Sincronia Real
-                        </div>
-                        <div class="flex items-center gap-2 text-xs font-bold text-gray-300 bg-white/5 px-5 py-2.5 rounded-full border border-white/5">
-                            <i data-lucide="smartphone" class="w-3 h-3 text-blue-500"></i> 100% Responsivo
-                        </div>
-                    </div>
-                </div>
+        <!-- TUNNEL SECTION (SCROLL CONTROLLED Z-AXIS) -->
+        <div id="tunnel-section">
+            <div id="tunnel-sticky-wrapper">
                 
-                <!-- Visual Mockup (CSS Art) -->
-                <div class="w-full md:w-1/3 flex justify-center perspective-[1000px]">
-                    <div class="relative w-48 h-96 bg-[#050505] border-[6px] border-[#222] rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden transform rotate-y-[-15deg] rotate-x-[5deg] hover:rotate-0 transition-transform duration-700 shadow-blue-500/20">
-                        <!-- Screen -->
-                        <div class="flex-1 bg-gradient-to-br from-gray-900 to-black p-5 flex flex-col justify-center items-center relative overflow-hidden">
-                            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] opacity-20"></div>
-                            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-yellow-600 to-yellow-400 flex items-center justify-center mb-6 shadow-lg shadow-yellow-500/30">
-                                <i data-lucide="zap" class="w-8 h-8 text-black fill-black"></i>
-                            </div>
-                            <div class="w-24 h-2 bg-gray-800 rounded mb-3"></div>
-                            <div class="w-16 h-2 bg-gray-800 rounded opacity-50"></div>
-                            
-                            <!-- Notification Pop -->
-                            <div class="absolute bottom-6 left-4 right-4 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/10 flex gap-3 items-center animate-bounce">
-                                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <div class="h-1.5 w-16 bg-white/40 rounded"></div>
+                <div class="text-center absolute top-20 left-0 w-full z-0 opacity-50" id="scroll-hint">
+                    <p class="text-[10px] uppercase tracking-[0.5em] text-gray-500">Explore o Sistema</p>
+                    <div class="w-px h-20 bg-gradient-to-b from-gray-500 to-transparent mx-auto mt-4"></div>
+                </div>
+
+                <div id="tunnel-world">
+                    
+                    <!-- CARD 1: HUNTER -->
+                    <div class="prism-card-wrapper" data-start-z="-1500" data-target-x="-360">
+                        <div class="prism-card border-t-2 border-yellow-500/50">
+                            <div class="dispersion-layer"></div>
+                            <div class="card-content">
+                                <div class="card-icon-box border-yellow-500/30"><i data-lucide="globe" class="text-yellow-500 w-8 h-8"></i></div>
+                                <h3 class="text-3xl font-black text-white uppercase mb-2 mt-4">Hunter</h3>
+                                <p class="text-sm text-gray-400 font-light">Motor de busca global.</p>
+                                <div class="persuasive-copy mt-6 pt-6 border-t border-white/10">
+                                    <p class="text-xs text-gray-300 leading-relaxed mb-4">
+                                        Encontre grupos de WhatsApp segmentados por nicho em segundos. Nossa IA varre a web indexando links ativos.
+                                    </p>
+                                    <div class="text-[9px] font-mono text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                                        <i data-lucide="database" class="w-3 h-3"></i> Database Global
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <!-- Notch -->
-                        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-[#222] rounded-b-xl z-20"></div>
                     </div>
+
+                    <!-- CARD 2: EXTRATOR -->
+                    <div class="prism-card-wrapper" data-start-z="-2500" data-target-x="0">
+                        <div class="prism-card border-t-2 border-purple-500/50">
+                            <div class="dispersion-layer"></div>
+                            <div class="card-content">
+                                <div class="card-icon-box border-purple-500/30"><i data-lucide="database" class="text-purple-500 w-8 h-8"></i></div>
+                                <h3 class="text-3xl font-black text-white uppercase mb-2 mt-4">Extrator</h3>
+                                <p class="text-sm text-gray-400 font-light">Mineração de precisão.</p>
+                                <div class="persuasive-copy mt-6 pt-6 border-t border-white/10">
+                                    <p class="text-xs text-gray-300 leading-relaxed mb-4">
+                                        Extraia milhares de contatos válidos de grupos. Organize funis de remarketing e segmente sua audiência.
+                                    </p>
+                                    <div class="text-[9px] font-mono text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                                        <i data-lucide="check-circle" class="w-3 h-3"></i> Validação Numérica
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 3: SENDER -->
+                    <div class="prism-card-wrapper" data-start-z="-3500" data-target-x="360">
+                        <div class="prism-card border-t-2 border-green-500/50">
+                            <div class="dispersion-layer"></div>
+                            <div class="card-content">
+                                <div class="card-icon-box border-green-500/30"><i data-lucide="send" class="text-green-500 w-8 h-8"></i></div>
+                                <h3 class="text-3xl font-black text-white uppercase mb-2 mt-4">Sender</h3>
+                                <p class="text-sm text-gray-400 font-light">Disparo massivo inteligente.</p>
+                                <div class="persuasive-copy mt-6 pt-6 border-t border-white/10">
+                                    <p class="text-xs text-gray-300 leading-relaxed mb-4">
+                                        Envie mensagens com sistema de rotação de delay e proteção antiban. Alta conversão na palma da sua mão.
+                                    </p>
+                                    <div class="text-[9px] font-mono text-green-500 uppercase tracking-widest flex items-center gap-2">
+                                        <i data-lucide="shield" class="w-3 h-3"></i> Motor Anti-Block
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
-        </section>
+        </div>
 
         <!-- FOOTER -->
-        <footer class="text-center text-gray-600 text-[10px] font-mono uppercase tracking-widest py-10 border-t border-white/5 reveal">
-            <p class="mb-3">&copy; 2024 Leads Hunter Ecosystem. All Systems Operational.</p>
-            <p class="opacity-50">Developed by <span class="text-gold font-bold">Samuel Vitor</span>.</p>
+        <footer class="max-w-7xl mx-auto px-6 py-12 text-center border-t border-white/5 bg-[#010103] relative z-20">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-[10px] text-gray-600 uppercase tracking-widest mb-4 md:mb-0">
+                    &copy; 2024 Leads Hunter Ecosystem.
+                </div>
+                <div class="flex items-center gap-2 text-[10px] text-gray-600 uppercase tracking-widest">
+                    <span class="w-1.5 h-1.5 bg-green-900 rounded-full"></span> All Systems Operational
+                </div>
+            </div>
         </footer>
 
     </div>
 
     <script>
-        // --- ICONS ---
         lucide.createIcons();
 
-        // --- SCROLL REVEAL ENGINE ---
-        const observerOptions = { threshold: 0.1, rootMargin: "0px 0px -50px 0px" };
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('active');
-                    observer.unobserve(entry.target);
+        // --- 1. OPTIMIZED BACKGROUND ENGINE (HYPER LATTICE) ---
+        const initBackground = () => {
+            const container = document.getElementById('hyper-lattice-bg');
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); 
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            
+            const fragmentShader = `
+                uniform float uTime;
+                uniform vec2 uResolution;
+                mat2 rot(float a) { float s=sin(a), c=cos(a); return mat2(c,-s,s,c); }
+                float sdOctahedron( vec3 p, float s ) { p = abs(p); return (p.x+p.y+p.z-s)*0.57735027; }
+                float map(vec3 p) {
+                    vec3 q = mod(p, 2.0) - 1.0;
+                    float d = sdOctahedron(q, 0.5); 
+                    float c1 = length(max(abs(q.xy) - 0.05, 0.0));
+                    float c2 = length(max(abs(q.yz) - 0.05, 0.0));
+                    float c3 = length(max(abs(q.zx) - 0.05, 0.0));
+                    return min(d, min(min(c1, c2), c3));
                 }
+                void main() {
+                    vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution.xy) / uResolution.y;
+                    vec3 ro = vec3(0.0, 0.0, uTime * 0.15); 
+                    vec3 rd = normalize(vec3(uv, 1.8)); 
+                    rd.xy *= rot(uTime * 0.02); 
+                    float t = 0.0; float d = 0.0;
+                    
+                    for(int i = 0; i < 32; i++) {
+                        vec3 p = ro + rd * t;
+                        p.xy *= rot(t * 0.1); 
+                        d = map(p);
+                        if(d < 0.001 || t > 20.0) break;
+                        t += d;
+                    }
+                    vec3 col = vec3(0.0);
+                    if(t < 20.0) {
+                        vec3 base = vec3(0.05, 0.05, 0.08); 
+                        vec3 whiteGlow = vec3(0.9, 0.95, 1.0) * (1.5 / (1.0 + t*t*0.5)); 
+                        col = base + whiteGlow;
+                    }
+                    col *= 1.0 - length(uv) * 0.3;
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `;
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: { uTime: { value: 0 }, uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } },
+                fragmentShader: fragmentShader, vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`
             });
-        }, observerOptions);
 
-        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-
-        // --- AMBIENT PARTICLES (LIGHTWEIGHT) ---
-        const canvas = document.getElementById('particles');
-        const ctx = canvas.getContext('2d');
-        let width, height;
-        let particles = [];
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
-        
-        class Particle {
-            constructor() {
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
-                this.vx = (Math.random() - 0.5) * 0.2;
-                this.vy = (Math.random() - 0.5) * 0.2;
-                this.size = Math.random() * 1.5;
-                this.alpha = Math.random() * 0.5;
+            scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+            const clock = new THREE.Clock();
+            function animate() {
+                material.uniforms.uTime.value = clock.getElapsedTime();
+                renderer.render(scene, camera);
+                requestAnimationFrame(animate);
             }
-            update() {
-                this.x += this.vx; this.y += this.vy;
-                if(this.x < 0) this.x = width; if(this.x > width) this.x = 0;
-                if(this.y < 0) this.y = height; if(this.y > height) this.y = 0;
-            }
-            draw() {
-                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        function init() {
-            resize();
-            for(let i=0; i<60; i++) particles.push(new Particle());
             animate();
-        }
-
-        function animate() {
-            ctx.clearRect(0, 0, width, height);
-            particles.forEach(p => { p.update(); p.draw(); });
-            requestAnimationFrame(animate);
-        }
-
-        // --- MOUSE HOVER EFFECT FOR CARDS (SPOTLIGHT) ---
-        document.addEventListener('mousemove', e => {
-            document.querySelectorAll('.glass-card').forEach(card => {
-                const rect = card.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                card.style.setProperty('--mouse-x', `${x}px`);
-                card.style.setProperty('--mouse-y', `${y}px`);
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
             });
+        };
+        initBackground();
+
+        // --- 2. SMOOTH SCROLL ENGINE (LERP) ---
+        const tunnelSection = document.getElementById('tunnel-section');
+        const cards = document.querySelectorAll('.prism-card-wrapper');
+        const scrollHint = document.getElementById('scroll-hint');
+
+        let targetScroll = 0;
+        let currentScroll = 0;
+        
+        window.addEventListener('scroll', () => {
+            targetScroll = window.scrollY;
         });
 
-        window.addEventListener('resize', resize);
-        init();
+        function renderLoop() {
+            currentScroll += (targetScroll - currentScroll) * 0.08; 
+
+            const tunnelTopRelativeToDoc = tunnelSection.offsetTop;
+            const scrollRel = currentScroll - tunnelTopRelativeToDoc;
+            
+            const viewportHeight = window.innerHeight;
+            const width = window.innerWidth;
+            const isMobile = width < 768;
+            
+            let animationProgress = (scrollRel) / (tunnelSection.offsetHeight - viewportHeight);
+            animationProgress = Math.max(0, Math.min(1, animationProgress));
+
+            if(animationProgress > 0.1) scrollHint.style.opacity = 0;
+            else scrollHint.style.opacity = 0.5;
+
+            cards.forEach((card, index) => {
+                const startZ = parseFloat(card.dataset.startZ);
+                const targetX = isMobile ? 0 : parseFloat(card.dataset.targetX);
+                const targetY = isMobile ? (index - 1) * 500 : 0; 
+                
+                const distanceToTravel = Math.abs(startZ);
+                const zPos = startZ + (animationProgress * distanceToTravel);
+
+                let xPos = 0;
+                let yPos = 0;
+                if(animationProgress > 0.5) {
+                    const spreadProgress = (animationProgress - 0.5) * 2; 
+                    xPos = targetX * spreadProgress;
+                    yPos = targetY * spreadProgress;
+                }
+
+                let opacity = 0;
+                if(zPos < -2000) opacity = 0;
+                else if (zPos < -500) opacity = (zPos + 2000) / 1500;
+                else opacity = 1;
+
+                card.style.transform = `translate(-50%, -50%) translate3d(${xPos}px, ${yPos}px, ${zPos}px)`;
+                card.style.opacity = opacity;
+
+                if(animationProgress > 0.95) {
+                    card.classList.add('docked');
+                } else {
+                    card.classList.remove('docked');
+                }
+            });
+
+            requestAnimationFrame(renderLoop);
+        }
+        
+        renderLoop();
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('active'); });
+        });
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
     </script>
 </body>
 </html>
